@@ -1,0 +1,75 @@
+#!/usr/bin/perl
+
+use v5.10;
+
+use strict;
+use warnings;
+
+use IO::Prompt;
+use Path::Tiny;
+use Term::Choose qw(choose);
+
+if ( !-d '.git' ) {
+    say "Not a git repository!";
+    exit 1;
+}
+
+my @branches = map{ $_ =~ s{\A \s* \*? \s*}{}; $_ }qx{git branch -a};
+my $branch   = choose
+     \@branches,
+     {
+         prompt => "Select a branch to pick from: ",
+     },
+;
+
+my @commits        = qx{git log --pretty=format:"%H %ci %s"};
+my @chosen_commits = choose
+    [ @commits[ 0 .. 40 ] ],
+    {
+        index => 1,
+    }
+;
+
+COMMIT_INDEX:
+for my $commit_index ( @chosen_commits ) {
+    my ($commit) = split /\s+/, $commits[$commit_index];
+
+    COMMIT:
+    while ( 1 ) {
+
+        ACTION:
+        while ( 1 ) {
+            my $action = choose
+                [ qw/view files pick next exit/ ],
+                {
+                    prompt => "Action for commit $commit",
+                },
+            ;
+
+            if ( $action eq 'next' ) {
+                next COMMIT_INDEX;
+            }
+
+            exit 0 if $action eq 'exit';
+
+            my $sub = main->can( $action );
+            $sub->( $commit ) if ( $sub );
+        }
+    }
+}
+
+
+sub view {
+    my ($commit) = @_;
+    say qx{git log -n 1 -p $commit};
+}
+
+sub files {
+    my ($commit) = @_;
+    say qx{git log -n 1 --stat --pretty=short --graph $commit};
+}
+
+sub pick {
+    my ($commit) = @_;
+    say qx{git cherry-pick $commit};
+}
